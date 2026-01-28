@@ -6,10 +6,15 @@ Usage:
 """
 
 import asyncio
+import os
 import signal
 import sys
+from dotenv import load_dotenv
 from .config import Config
 from .bot import MomentumBot
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def main():
@@ -20,12 +25,22 @@ def main():
     print("Monitors YES/NO price convergence and trades momentum")
     print("Press Ctrl+C to stop\n")
 
+    # Load API credentials from environment
+    api_key = os.getenv("KALSHI_API_KEY")
+    private_key_path = os.getenv("KALSHI_PRIVATE_KEY_PATH", "private_key.pem")
+    use_demo = os.getenv("KALSHI_USE_DEMO", "true").lower() == "true"
+
+    if not api_key:
+        print("❌ Error: KALSHI_API_KEY not found in environment")
+        print("   Create a .env file with: KALSHI_API_KEY=your-api-key")
+        sys.exit(1)
+
     # Configuration
     config = Config(
-        # API credentials
-        api_key="54d3008b-2b1a-4bed-844c-177a8de556e4",
-        private_key_path="private_key.pem",
-        use_demo=True,
+        # API credentials (from .env)
+        api_key=api_key,
+        private_key_path=private_key_path,
+        use_demo=use_demo,
 
         # Liquidity requirements (relaxed for demo API)
         min_volume=0,  # Demo has low volume
