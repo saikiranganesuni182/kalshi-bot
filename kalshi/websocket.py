@@ -1,15 +1,12 @@
 """
-Kalshi WebSocket Client - Real-time Orderbook & Bid/Ask Spreads
+Kalshi WebSocket Client
+-----------------------
+WebSocket client for real-time Kalshi market data.
 """
 
 import asyncio
-import base64
 import json
-import time
 import requests
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.backends import default_backend
 
 try:
     import websockets
@@ -17,9 +14,13 @@ except ImportError:
     print("Please install websockets: pip install websockets")
     exit(1)
 
+from . import config
+from . import auth
 
-def fetch_active_markets(base_url: str, limit: int = 100) -> list:
+
+def fetch_active_markets(base_url: str = None, limit: int = 100) -> list:
     """Fetch active markets from REST API"""
+    base_url = base_url or config.REST_URL
     response = requests.get(
         f"{base_url}/markets",
         params={"limit": limit, "status": "open"}
@@ -27,7 +28,7 @@ def fetch_active_markets(base_url: str, limit: int = 100) -> list:
     response.raise_for_status()
     markets = response.json().get("markets", [])
 
-    # Filter for markets with activity (volume > 0 or has bid/ask)
+    # Filter for markets with activity
     active = [
         m for m in markets
         if m.get("volume", 0) > 0
@@ -43,52 +44,22 @@ def fetch_active_markets(base_url: str, limit: int = 100) -> list:
 class KalshiWebSocket:
     """WebSocket client for real-time Kalshi market data"""
 
-    # Demo environment websocket URL
-    WS_URL = "wss://demo-api.kalshi.co/trade-api/ws/v2"
-    WS_PATH = "/trade-api/ws/v2"
-
-    def __init__(self, api_key: str, private_key_path: str):
-        self.api_key = api_key
-        self.private_key = self._load_private_key(private_key_path)
+    def __init__(self, api_key: str = None, private_key_path: str = None):
+        self.api_key = api_key or config.API_KEY
+        self.private_key_path = private_key_path or config.PRIVATE_KEY_PATH
+        self.private_key = auth.load_private_key(self.private_key_path)
+        self.ws_url = config.WS_URL
+        self.ws_path = config.WS_PATH
         self.orderbooks = {}  # Store orderbook state per market
-
-    def _load_private_key(self, path: str):
-        """Load RSA private key from file"""
-        with open(path, "rb") as key_file:
-            return serialization.load_pem_private_key(
-                key_file.read(),
-                password=None,
-                backend=default_backend()
-            )
-
-    def _sign_request(self, timestamp: str, method: str, path: str) -> str:
-        """Create signature for API request using RSA-PSS"""
-        message = f"{timestamp}{method}{path}"
-        signature = self.private_key.sign(
-            message.encode('utf-8'),
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.DIGEST_LENGTH
-            ),
-            hashes.SHA256()
-        )
-        return base64.b64encode(signature).decode('utf-8')
 
     def _get_auth_headers(self) -> dict:
         """Generate authentication headers for websocket connection"""
-        timestamp = str(int(time.time() * 1000))
-        signature = self._sign_request(timestamp, "GET", self.WS_PATH)
-
-        return {
-            "KALSHI-ACCESS-KEY": self.api_key,
-            "KALSHI-ACCESS-SIGNATURE": signature,
-            "KALSHI-ACCESS-TIMESTAMP": timestamp
-        }
+        return auth.get_ws_auth_headers(self.api_key, self.private_key, self.ws_path)
 
     async def connect(self):
         """Establish websocket connection"""
         headers = self._get_auth_headers()
-        return await websockets.connect(self.WS_URL, additional_headers=headers)
+        return await websockets.connect(self.ws_url, additional_headers=headers)
 
     async def subscribe_orderbook(self, ws, market_tickers: list):
         """Subscribe to orderbook updates for specified markets"""
@@ -134,14 +105,12 @@ class KalshiWebSocket:
         if not ticker or ticker not in self.orderbooks:
             return
 
-        # Apply price changes
         price = data.get("price")
         delta = data.get("delta")
-        side = data.get("side")  # 'yes' or 'no'
+        side = data.get("side")
 
         if side and price is not None and delta is not None:
             book = self.orderbooks[ticker][side]
-            # Find and update the price level
             found = False
             for level in book:
                 if level[0] == price:
@@ -165,7 +134,6 @@ class KalshiWebSocket:
         yes_book = sorted(book.get("yes", []), key=lambda x: x[0], reverse=True)
         no_book = sorted(book.get("no", []), key=lambda x: x[0], reverse=True)
 
-        # Best bid = highest yes price, Best ask = 100 - highest no price
         best_bid = yes_book[0][0] if yes_book else None
         best_ask = (100 - no_book[0][0]) if no_book else None
 
@@ -180,11 +148,11 @@ class KalshiWebSocket:
             print(f"Best Bid: {best_bid}c | Best Ask: {best_ask}c")
 
         print(f"\nYES orders (bids):")
-        for price, qty in yes_book[:5]:  # Top 5 levels
+        for price, qty in yes_book[:5]:
             print(f"  {price}c: {qty} contracts")
 
         print(f"\nNO orders (asks as implied YES):")
-        for price, qty in no_book[:5]:  # Top 5 levels
+        for price, qty in no_book[:5]:
             implied_yes = 100 - price
             print(f"  {implied_yes}c (NO@{price}c): {qty} contracts")
 
@@ -237,16 +205,14 @@ class KalshiWebSocket:
 
         try:
             async with websockets.connect(
-                self.WS_URL,
+                self.ws_url,
                 additional_headers=self._get_auth_headers()
             ) as ws:
                 print("Connected!")
 
-                # Subscribe to both orderbook and ticker channels
                 await self.subscribe_orderbook(ws, market_tickers)
                 await self.subscribe_ticker(ws, market_tickers)
 
-                # Listen for messages
                 await self.listen(ws)
 
         except Exception as e:
@@ -255,22 +221,17 @@ class KalshiWebSocket:
 
 
 async def main():
-    # Configuration
-    API_KEY = "54d3008b-2b1a-4bed-844c-177a8de556e4"
-    PRIVATE_KEY_PATH = "private_key.pem"
-    REST_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
-
+    """Demo the websocket functionality"""
     print("=" * 60)
     print("Kalshi WebSocket - Real-time Orderbook Viewer")
     print("=" * 60)
 
-    # Fetch active markets dynamically
     print("\nFetching active markets...")
-    active_markets = fetch_active_markets(REST_BASE_URL, limit=100)
+    active_markets = fetch_active_markets(limit=100)
 
     if not active_markets:
         print("No active markets found. Using all open markets instead.")
-        response = requests.get(f"{REST_BASE_URL}/markets", params={"limit": 20, "status": "open"})
+        response = requests.get(f"{config.REST_URL}/markets", params={"limit": 20, "status": "open"})
         all_markets = response.json().get("markets", [])
         tickers = [m["ticker"] for m in all_markets[:10]]
     else:
@@ -280,13 +241,12 @@ async def main():
         for m in active_markets[:15]:
             print(f"{m['ticker']:<40} {m.get('yes_bid', 0):>4}c {m.get('yes_ask', 0):>4}c {m.get('volume', 0):>8}")
 
-        # Subscribe to top markets by volume
         tickers = [m["ticker"] for m in active_markets[:10]]
 
     print(f"\nSubscribing to {len(tickers)} markets...")
     print("Press Ctrl+C to stop\n")
 
-    client = KalshiWebSocket(API_KEY, PRIVATE_KEY_PATH)
+    client = KalshiWebSocket()
     await client.run(tickers)
 
 

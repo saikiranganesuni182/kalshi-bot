@@ -32,7 +32,7 @@ Step 4: Send headers with WebSocket connection
         └── KALSHI-ACCESS-TIMESTAMP: "1706385600000"
 ```
 
-**Code location:** `kalshi_websocket.py` lines 45-70
+**Code location:** `kalshi/auth.py`
 
 ```python
 def _sign_request(self, timestamp: str, method: str, path: str) -> str:
@@ -89,7 +89,7 @@ def _sign_request(self, timestamp: str, method: str, path: str) -> str:
         Top 10 tickers selected
 ```
 
-**Code location:** `kalshi_websocket.py` lines 18-38
+**Code location:** `kalshi/websocket.py`
 
 ```python
 def fetch_active_markets(base_url: str, limit: int = 100) -> list:
@@ -458,22 +458,46 @@ Low volume  + wide spread  = Avoid
 ## 9. File Structure Summary
 
 ```
-kalshi-api/
-├── kalshi_websocket.py    # Main WebSocket client
-│   ├── fetch_active_markets()      # REST API to get markets
-│   ├── KalshiWebSocket class
-│   │   ├── _sign_request()         # Authentication
-│   │   ├── _get_auth_headers()     # Build headers
-│   │   ├── subscribe_orderbook()   # Subscribe to channel
-│   │   ├── process_orderbook_snapshot()  # Handle initial state
-│   │   ├── process_orderbook_delta()     # Handle updates
-│   │   └── _display_orderbook()    # Calculate & show bid/ask
-│   └── main()                      # Entry point
+kalshi-bot/
 │
-├── kalshi_client.py       # REST API client (orders, balance)
-├── get_markets.py         # Simple market list utility
-├── private_key.pem        # Your RSA private key
-└── requirements.txt       # Dependencies
+├── kalshi/                     # Core Kalshi API package
+│   ├── __init__.py             # Package exports
+│   ├── auth.py                 # RSA-PSS authentication & signing
+│   │   ├── _sign_request()           # Sign message with private key
+│   │   └── _get_auth_headers()       # Build auth headers
+│   ├── client.py               # REST API client (orders, balance)
+│   ├── config.py               # Configuration & environment settings
+│   └── websocket.py            # WebSocket client for real-time data
+│       ├── fetch_active_markets()    # REST API to get markets
+│       ├── KalshiWebSocket class
+│       │   ├── subscribe_orderbook()         # Subscribe to channel
+│       │   ├── process_orderbook_snapshot()  # Handle initial state
+│       │   ├── process_orderbook_delta()     # Handle updates
+│       │   └── _display_orderbook()          # Calculate & show bid/ask
+│       └── main()                    # Entry point
+│
+├── bots/                       # Trading bot implementations
+│   ├── __init__.py             # Package exports
+│   ├── trading_bot.py          # Single-threaded trading bot
+│   └── trading_bot_mt.py       # Multi-threaded trading bot
+│
+├── strategies/                 # Trading strategies
+│   ├── __init__.py             # Package exports
+│   └── market_maker.py         # Market making strategy
+│
+├── scripts/                    # Utility scripts
+│   ├── check_status.py         # Check account/connection status
+│   ├── demo.py                 # Demo/testing script
+│   ├── get_markets.py          # Fetch and display markets
+│   └── run_bot.py              # Main entry point to run bots
+│
+├── docs/                       # Documentation
+│   └── LOGIC_EXPLAINED.md      # This file - detailed logic explanation
+│
+├── .gitignore                  # Git ignore rules
+├── private_key.pem             # Your RSA private key (keep secret!)
+├── README.md                   # Project overview and setup
+└── requirements.txt            # Python dependencies
 ```
 
 ---
