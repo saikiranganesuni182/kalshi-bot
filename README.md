@@ -10,55 +10,99 @@ Automated market-making bot for Kalshi prediction markets.
 - **Automatic order management**: Places, monitors, and cancels orders
 - **Risk controls**: Position limits, order timeouts, minimum spread requirements
 
-## Files
+## Project Structure
 
-| File | Description |
-|------|-------------|
-| `trading_bot_mt.py` | Multi-threaded trading bot (main) |
-| `trading_bot.py` | Single-threaded trading bot |
-| `market_maker.py` | Market making logic |
-| `kalshi_websocket.py` | WebSocket client for orderbook |
-| `kalshi_client.py` | REST API client |
-| `check_status.py` | Account status checker |
-| `get_markets.py` | Market discovery utility |
-| `LOGIC_EXPLAINED.md` | Detailed explanation of trading logic |
+```
+kalshi-bot/
+├── kalshi/                    # Core API package
+│   ├── __init__.py
+│   ├── config.py              # Centralized configuration
+│   ├── auth.py                # Authentication/signing logic
+│   ├── client.py              # REST API client
+│   └── websocket.py           # WebSocket client
+│
+├── strategies/                # Trading strategies
+│   ├── __init__.py
+│   └── market_maker.py        # Market making strategy
+│
+├── bots/                      # Bot implementations
+│   ├── __init__.py
+│   ├── trading_bot.py         # Single-threaded bot
+│   └── trading_bot_mt.py      # Multi-threaded bot (main)
+│
+├── scripts/                   # Utility scripts
+│   ├── run_bot.py             # Main entry point
+│   ├── check_status.py        # Account status checker
+│   ├── get_markets.py         # Market discovery
+│   └── demo.py                # Strategy demonstration
+│
+├── docs/                      # Documentation
+│   └── LOGIC_EXPLAINED.md     # Trading logic explanation
+│
+├── requirements.txt
+├── README.md
+├── .gitignore
+└── private_key.pem
+```
 
 ## Setup
 
 1. Install dependencies:
 ```bash
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-2. Add your API credentials:
-   - Create `private_key.pem` with your Kalshi RSA private key
-   - Update `API_KEY` in the bot files
+2. Configure credentials:
+   - Place your RSA private key in `private_key.pem`
+   - Update `API_KEY` in `kalshi/config.py` (or set `KALSHI_API_KEY` environment variable)
 
 3. Run the bot:
 ```bash
-# Multi-threaded (recommended)
-python -u trading_bot_mt.py
+# Main entry point (recommended)
+python scripts/run_bot.py
 
-# Single-threaded
-python -u trading_bot.py
+# Or run directly
+python -m bots.trading_bot_mt
 ```
 
 ## Configuration
 
-Edit the config in `trading_bot_mt.py`:
+Edit `kalshi/config.py` to customize:
 
 ```python
-self.config = {
-    'min_spread': 3,        # Minimum spread to trade (cents)
-    'order_size': 5,        # Contracts per order
-    'max_position': 50,     # Max position per market
-    'edge': 1,              # Edge to add to bid/ask
-    'order_timeout': 10,    # Cancel orders after N seconds
-    'aggressive_spread': 10, # Wide spread threshold
-    'max_threads': 20,      # Max concurrent market threads
+DEFAULT_CONFIG = {
+    'min_spread': 3,           # Minimum spread to trade (cents)
+    'order_size': 5,           # Contracts per order
+    'max_position': 50,        # Max position per market
+    'edge': 1,                 # Edge to add to bid/ask
+    'order_timeout': 10,       # Cancel orders after N seconds
+    'aggressive_spread': 10,   # Wide spread threshold
+    'max_threads': 20,         # Max concurrent market threads
 }
+```
+
+## Usage
+
+### Run the Trading Bot
+```bash
+python scripts/run_bot.py
+```
+
+### Check Account Status
+```bash
+python scripts/check_status.py
+```
+
+### Discover Active Markets
+```bash
+python scripts/get_markets.py
+```
+
+### Run Strategy Demo
+```bash
+python scripts/demo.py
 ```
 
 ## Strategy
@@ -71,26 +115,41 @@ The bot implements a market-making strategy:
 4. **Capture spread**: Profit when both sides fill
 5. **Repeat**: Cancel unfilled orders and try again
 
-## Commands
+## API Package
 
-```bash
-# Watch live activity
-tail -f /tmp/bot_mt.log
+Use the `kalshi` package in your own code:
 
-# Check account status
-python check_status.py
+```python
+from kalshi import KalshiClient, KalshiWebSocket
 
-# Stop the bot
-pkill -f trading_bot_mt
+# REST API
+client = KalshiClient()
+print(f"Balance: ${client.get_balance_dollars():.2f}")
+print(f"Positions: {client.get_positions_dict()}")
+
+# WebSocket
+import asyncio
+ws = KalshiWebSocket()
+asyncio.run(ws.run(['TICKER1', 'TICKER2']))
 ```
 
 ## Demo vs Production
 
-Currently configured for **DEMO** environment:
-- URL: `demo-api.kalshi.co`
+Currently configured for **DEMO** environment.
 
-To switch to production, update URLs in bot files to:
-- URL: `api.elections.kalshi.com`
+To switch to production, update `kalshi/config.py`:
+```python
+REST_URL = "https://api.elections.kalshi.com/trade-api/v2"
+WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
+```
+
+## Documentation
+
+See `docs/LOGIC_EXPLAINED.md` for detailed explanation of:
+- Authentication flow
+- Orderbook structure
+- YES/NO contract mechanics
+- Trading strategy concepts
 
 ## Disclaimer
 

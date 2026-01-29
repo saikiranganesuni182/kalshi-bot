@@ -1,7 +1,8 @@
 # Private keys and credentials - NEVER COMMIT
 # *.pem
 # private_key*
-# .env
+.env
+.env.*
 credentials*
 secrets*
 
